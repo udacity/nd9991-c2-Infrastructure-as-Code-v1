@@ -1,52 +1,15 @@
-# README Template
+## ND9991 - C2- Infrastructure as Code - Supporting Material and Starter Code
+This folder provides the supporting material and starter code for the "ND9991 - C2- Infrastructure as Code" course. This folder contains the following folders:
+1. project_starter - It contains the starter code.
+2. supporting_material - It contains the essential files (.yml, .json, .bat, .sh, and .jpeg) that were referred in the different lessons of this course.
 
-Below is a template provided for use when building your README file for students.
-
-# Project Title
-
-Project description goes here.
-
-## Getting Started
-
-Instructions for how to get a copy of the project running on your local machine.
 
 ### Dependencies
+##### 1. AWS account
+You would require to have an AWS account to be able to build cloud infrastructure.
 
-```
-Examples here
-```
+##### 2. VS code editor
+An editor would be helpful to visualize the image as well as code. Download the VS Code editor [here](https://code.visualstudio.com/download).
 
-### Installation
-
-Step by step explanation of how to get a dev environment running.
-
-List out the steps
-
-```
-Give an example here
-```
-
-## Testing
-
-Explain the steps needed to run any automated tests
-
-### Break Down Tests
-
-Explain what each test does and why
-
-```
-Examples here
-```
-## Project Instructions
-
-This section should contain all the student deliverables for this project.
-
-## Built With
-
-* [Item1](www.item1.com) - Description of item
-* [Item2](www.item2.com) - Description of item
-* [Item3](www.item3.com) - Description of item
-
-Include all items used to build project.
-
-## License
+##### 3. An account on www.lucidchart.com
+A free user-account on [www.lucidchart.com](www.lucidchart.com) is required to be able to draw the web app architecture diagrams for AWS.
