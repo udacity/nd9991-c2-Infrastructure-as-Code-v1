@@ -1,4 +1,4 @@
-## ND9991 - C2- Infrastructure as Code - Supporting Material and Starter Code
+### ND9991 - C2- Infrastructure as Code - Supporting Material and Starter Code
 This folder provides the supporting material and starter code for the "ND9991 - C2- Infrastructure as Code" course. This folder contains the following folders:
 1. project_starter - It contains the starter code.
 2. supporting_material - It contains the essential files (.yml, .json, .bat, .sh, and .jpeg) that were referred in the different lessons of this course.
