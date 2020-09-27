@@ -52,6 +52,7 @@ Resources:
         Fn::Base64: !Sub |
           #!/bin/bash
           # Install docker
+          export DEBIAN_FRONTEND=noninteractive
           apt-get update
           apt-get install -y apt-transport-https ca-certificates curl software-properties-common
           curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
