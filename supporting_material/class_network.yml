@@ -1,0 +1,15 @@
+Description: >
+    Udacity / Class-excercise
+    This template deploys a VPC with just a CIDR property.
+
+
+Resources:
+    UdacityVPC: 
+        Type: AWS::EC2::VPC
+        Properties:
+            CidrBlock: 10.0.0.0/16
+            EnableDnsHostnames: true
+            Tags: 
+                - Key: Class 
+                  Value: Udacity
+            
