@@ -1,0 +1,698 @@
+Description: >
+  Bolatan Ibrahim / High availability server deployed through CloudFormation
+
+Parameters:
+  Environment:
+    Description: Name of the environment that will be prefixed to all resources for easy identification.
+    Type: String
+  
+  InternetCIDR:
+    Description: IP range for the internet
+    AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})'
+    ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x.
+    Type: String
+    Default: 0.0.0.0/0
+  
+  AdminIP:
+    Description: IP address of the admin computer
+    AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})'
+    ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x.
+    Type: String
+    MaxLength: 18
+    MinLength: 9
+    Default: 0.0.0.0/0
+  
+  BucketName:
+    Description: S3 Bucket name where our static files resides
+    Type: String
+    AllowedPattern: '^[0-9a-zA-Z]+([0-9a-zA-Z-]*[0-9a-zA-Z])*$'
+    Default: ehbraheem-static-site
+  
+  BucketRegion:
+    Description: Region where our S3 Bucket resides.
+    Type: String
+    AllowedPattern: '^[0-9a-zA-Z]+([0-9a-zA-Z-]*[0-9a-zA-Z])*$'
+    Default: eu-west-3
+  
+  SiteArchive:
+    Description: Compressed archive of my static sile.
+    Type: String
+    AllowedPattern: '^[0-9a-zA-Z.]+([0-9a-zA-Z-]*[0-9a-zA-Z.])*$'
+    Default: ehbraheem-static-site.tar.gz
+
+  KeyPairName:
+    Description: Name of an existing AWS EC2 key-pair
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: Must be the name of an existing EC2 KeyPair.
+  
+  BucketKeyPrefix:
+    AllowedPattern: '^[0-9a-zA-Z-/]*$'
+    ConstraintDescription: >-
+      Files key prefix can include numbers, lowercase letters, uppercase
+      letters, hyphens (-), and forward slash (/).
+    Default: '/'
+    Description: >-
+      S3 key prefix for the static site assets. Asset key prefix can
+      include numbers, lowercase letters, uppercase letters, hyphens (-), and
+      forward slash (/).
+    Type: String
+  
+  ImageAMI:
+    Description: Image AMI ID
+    Type: AWS::EC2::Image::Id
+    Default: ami-0edf3b95e26a682df
+
+  InstanceType:
+    Description: EC2 instance type
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+      - t2.micro
+      - m1.small
+      - m1.large
+  
+  Volume:
+    Description: "Provide disk's/folder's name (ex.: xvda1)"
+    AllowedPattern: '^[0-9a-zA-Z.]+([0-9a-zA-Z-]*[0-9a-zA-Z.])*$'
+    Type: "String"
+    Default: "xvda1"
+
+  Path:
+    Description: "Filesystem Path"
+    AllowedPattern: '(?=(\/))\1[ .0-9a-zA-Z_-]*$'
+    Type: 'String'
+    Default: '/'
+
+  FS:
+    Description: "Filesystem type (fstype) - ext4 or xfs -> Ubuntu and AmazonLinux use ext4, CentOS use xfs"
+    Type: String
+    AllowedValues:
+      - ext4
+      - xfs
+      - btrfs
+    ConstraintDescription: You must specify ext4,xfs,or btrfs.
+    Default: ext4
+
+  AdminEmail:
+    Description: Email address of the admin
+    AllowedPattern: '^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$'
+    ConstraintDescription: must be a valid Email address of form NAME@DOMAIN.TLD
+    Type: String
+    MinLength: 7
+  
+  AdminPhone:
+    Description: Phone number of the admin
+    AllowedPattern: '^[+]*[(]{0,1}[0-9]{1,4}[)]{0,1}[-\s\.\/0-9]*$'
+    ConstraintDescription: must be a Phone number
+    Type: String
+    MinLength: 8
+
+Resources:
+  AppSecGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow HTTP and SSH access to our servers
+      VpcId: 
+        Fn::ImportValue: !Sub ${Environment}-VPCID
+
+
+  AppSecGroupIngressAllowInboundSSHFromBastion:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref AppSecGroup
+      IpProtocol: tcp
+      FromPort: 22
+      ToPort: 22
+      SourceSecurityGroupId: !Ref BastionSecurityGroup
+
+  
+  AppSecGroupIngressAllowInboundHTTPFromLoadBalancer:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref AppSecGroup
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      SourceSecurityGroupId: !Ref LBSecGroup
+
+
+  AppSecGroupEgressAllowOutboundHTTPToInternet:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref AppSecGroup
+      IpProtocol: tcp
+      FromPort: 0
+      ToPort: 65535
+      CidrIp: !Ref InternetCIDR
+
+
+  LBSecGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow HTTP access to our app through LoadBalancer
+      VpcId:
+        Fn::ImportValue: !Sub ${Environment}-VPCID
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: !Ref InternetCIDR
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: !Ref InternetCIDR
+
+
+  AppLaunchConfig:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Metadata:
+        AWS::CloudFormation::Authentication:
+          S3AcessCreds:
+            type: S3
+            buckets:
+              - !Ref BucketName
+            roleName: !Ref S3Role
+        AWS::CloudFormation::Init:
+          configSets:
+            setup:
+              - configure_cfn
+              - setup_apache
+              - download_site
+              - install_cloudwatch_agent
+          download_site:
+            files:
+              /var/www/html/site.tar.gz:
+                source: !Join [ "", [ "https://", !Ref BucketName, '.s3.', !Ref BucketRegion, ".amazonaws.com", !Ref BucketKeyPrefix, !Ref SiteArchive ]]
+                # mode: 00400
+                # owner: apache
+                # group: apache
+                authentication: S3AcessCreds
+            commands:
+              extract_site:
+                command: tar xfz /var/www/html/site.tar.gz --strip-components=1 -C /var/www/html/
+          
+          setup_apache:
+            packages:
+              apt:
+                apache2: []
+            commands:
+              start_apache:
+                command: systemctl start apache2
+              enable_apache:
+                command: systemctl enable apache2
+          
+          install_cloudwatch_agent:
+            packages:
+              apt:
+                unzip: []
+            files:
+              /tmp/AmazonCloudWatchAgent.zip:
+                source: https://s3.amazonaws.com/amazoncloudwatch-agent/linux/amd64/latest/AmazonCloudWatchAgent.zip
+            commands:
+              extract_agent:
+                command: |
+                  cd /tmp
+                  unzip AmazonCloudWatchAgent.zip
+              install_agent:
+                command: |
+                  cd /tmp
+                  sudo ./install.sh
+
+          configure_cfn:
+            files:
+              /etc/cfn/cfn-hup.conf:
+                content: !Sub |
+                  [main]
+                  stack=${AWS::StackId}
+                  region=${AWS::Region}
+                  verbose=true
+                  interval=5
+                mode: "000400"
+                owner: root
+                group: root
+              /etc/cfn/hooks.d/cfn-auto-reloader.conf:
+                content: !Sub |
+                  [cfn-auto-reloader-hook]
+                  triggers=post.update
+                  path=Resources.EC2.Metadata.AWS::CloudFormation::Init
+                  action=/opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource EC2 --configsets setup --region ${AWS::Region}
+                mode: "000400"
+                owner: root
+                group: root
+              /lib/systemd/system/cfn-hup.service:
+                content: !Sub |
+                  [Unit]
+                  Description=cfn-hup daemon
+                  
+                  [Service]
+                  Type=simple
+                  ExecStart=/opt/aws/bin/cfn-hup
+                  Restart=always
+                  
+                  [Install]
+                  WantedBy=multi-user.target
+                mode: "000400"
+                owner: root
+                group: root
+            commands:
+              01_enable_cfn-hup:
+                command: "systemctl enable cfn-hup.service"
+              02_start_cfn-hup:
+                command: "systemctl start cfn-hup.service"
+    Properties:
+      IamInstanceProfile: !Ref AppInstanceProfile
+      UserData: 
+        Fn::Base64: !Sub |
+          #!/bin/bash -x
+          #CFN Functions
+          function cfn_fail
+          {
+            cfn-signal -e 1 --stack ${AWS::StackName} --region ${AWS::Region} --resource AppGroup
+            exit 1
+          }
+          function cfn_success
+          {
+            cfn-signal -e 0 --stack ${AWS::StackName} --region ${AWS::Region} --resource AppGroup
+            exit 0
+          }
+          S3URI=https://${BucketName}.${BucketRegion}.amazonaws.com${BucketKeyPrefix}
+          apt-get -y update
+          # Install git
+          apt-get install -y git 
+          #Load Linux utils
+          until git clone https://github.com/aws-quickstart/quickstart-linux-utilities.git ; do echo "Retrying"; done
+          cd /quickstart-linux-utilities && source quickstart-cfn-tools.source
+          # Prep operating systems
+          qs_update-os || qs_err
+          qs_bootstrap_pip || qs_err
+          qs_aws-cfn-bootstrap || qs_err
+          echo "[INFO] Setting up our static site";
+          cfn-init -v --stack ${AWS::StackName} --resource AppLaunchConfig --configsets setup --region ${AWS::Region} || cfn_fail
+          # Signal cfn-init (final check)
+          qs_status;
+          # [ $(qs_status) == 0 ] && cfn_success || cfn_fail "signaled"
+          cfn_success
+      ImageId: !Ref ImageAMI
+      KeyName: !Ref KeyPairName
+      InstanceType: !Ref InstanceType
+      SecurityGroups:
+        - !Ref AppSecGroup
+      BlockDeviceMappings:
+        - DeviceName: /dev/sdk
+          Ebs: 
+            VolumeSize: 10
+
+
+  AppGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      VPCZoneIdentifier:
+        - Fn::ImportValue: !Sub ${Environment}-PRI-NETS
+      DesiredCapacity: 4
+      MinSize: 4
+      MaxSize: 7
+      LaunchConfigurationName: !Ref AppLaunchConfig
+      TargetGroupARNs:
+        - !Ref AppTargetGroup
+      MetricsCollection: 
+        - Granularity: 1Minute
+          Metrics: 
+            - GroupMinSize
+            - GroupMaxSize
+    CreationPolicy:
+      ResourceSignal:
+        Count: 4
+        Timeout: PT15M
+    UpdatePolicy:
+      AutoScalingRollingUpdate:
+        MinInstancesInService: 1
+        MaxBatchSize: 3
+        PauseTime: PT10S
+        WaitOnResourceSignals: true
+        SuspendProcesses:
+          - HealthCheck
+          - ReplaceUnhealthy
+          - AZRebalance
+          - AlarmNotification
+          - ScheduledActions
+
+
+  AppLBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref AppTargetGroup
+      LoadBalancerArn: !Ref AppLB
+      Port: 80
+      Protocol: HTTP
+
+
+  AppLBListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref AppTargetGroup
+      ListenerArn: !Ref AppLBListener
+      Priority: 1
+      Conditions:
+        - Field: path-pattern
+          Values: [/]
+
+
+  AppTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      Port: 80
+      Protocol: HTTP
+      UnhealthyThresholdCount: 5
+      VpcId:
+        Fn::ImportValue: !Sub ${Environment}-VPCID
+
+
+  AppLB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Subnets:
+        - Fn::ImportValue: !Sub ${Environment}-PUB1-SN
+        - Fn::ImportValue: !Sub ${Environment}-PUB2-SN
+      SecurityGroups:
+        - !Ref LBSecGroup
+
+
+  S3Role:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Permission for S3 access from our servers
+      AssumeRolePolicyDocument:
+        Statement: 
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action: 
+              - sts:AssumeRole
+            Sid: ''
+      Policies:
+        - PolicyName: AuthenticatedS3GetObjects
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action: 
+                  - s3:GetObject
+                Resource:
+                  - !Sub 'arn:aws:s3:::${BucketName}${BucketKeyPrefix}*'
+  
+
+  AppInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref S3Role
+  
+
+  ServerQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      ReceiveMessageWaitTimeSeconds: 20
+      VisibilityTimeout: 60
+      QueueName: !Join [ '-', [ !Sub '${Environment}', 'Queue']]
+
+
+  Warning:
+    Type: AWS::SNS::Topic
+    Properties: 
+      DisplayName: !Sub ${Environment}-Warning
+      Subscription: 
+        - Endpoint: !Ref AdminEmail
+          Protocol: email
+        - Endpoint: !GetAtt ServerQueue.Arn
+          Protocol: sqs
+      TopicName: !Sub ${Environment}-Warning
+
+
+  Error:
+    Type: AWS::SNS::Topic
+    Properties: 
+      DisplayName: !Sub ${Environment}-Error
+      Subscription: 
+        - Endpoint: !Ref AdminPhone
+          Protocol: sms
+      TopicName: !Sub ${Environment}-Error
+
+
+  SNSToQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      PolicyDocument:
+        Id: PushMessageToSQSPolicy
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action: 
+              - sqs:SendMessage
+            Principal: 
+              AWS: '*'
+            Resource:
+              - !Ref Warning
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !Ref Warning
+      Queues:
+        - !Ref ServerQueue
+
+
+
+# -------------------- Bastion Host -------------------- #
+  BastionSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow HTTP and SSH access to our BastionHost
+      VpcId: 
+        Fn::ImportValue: !Sub ${Environment}-VPCID
+      
+
+  BastionSecurityGroupEggressAllowInboundSSHFromAdminIP:
+      Type: AWS::EC2::SecurityGroupIngress
+      Properties:
+        GroupId: !Ref BastionSecurityGroup
+        IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: !Ref AdminIP
+
+
+  BastionSecurityGroupEgressAllowOutboundSSHToApplications:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref BastionSecurityGroup
+      IpProtocol: tcp
+      FromPort: 22
+      ToPort: 22
+      DestinationSecurityGroupId: !Ref AppSecGroup
+
+
+  BastionHost1:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref ImageAMI
+      KeyName: !Ref KeyPairName
+      InstanceType: !Ref InstanceType
+      SecurityGroupIds:
+        - !Ref BastionSecurityGroup
+      SubnetId: 
+        Fn::ImportValue: !Sub ${Environment}-PUB1-SN
+      Tags:
+        - Key: Name
+          Value: !Sub ${Environment} BastionHost for Public Subnet (AZ1)
+
+  
+  BastionHost2:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref ImageAMI
+      KeyName: !Ref KeyPairName
+      InstanceType: !Ref InstanceType
+      SecurityGroupIds:
+        - !Ref BastionSecurityGroup
+      SubnetId: 
+        Fn::ImportValue: !Sub ${Environment}-PUB2-SN
+      Tags:
+        - Key: Name
+          Value: !Sub ${Environment} BastionHost for Public Subnet (AZ2)
+
+
+           
+
+
+# ------------------- CloudWatch ---------------------- #
+  CPUCriticalAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DeletionPolicy: Retain
+    DependsOn: AppGroup
+    Properties:
+      AlarmDescription: !Sub '${Environment} - High CPU Usage 95%'
+      AlarmActions:
+        - !Ref Error
+      OKActions:
+        - !Ref Error
+      EvaluationPeriods: 2
+      Threshold: 95
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Statistic: Average
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Period: 900
+     
+  
+  CPUWarningAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn: AppGroup
+    DeletionPolicy: Retain
+    Properties:
+      AlarmDescription: !Sub '${Environment} - High CPU Usage 90%'
+      AlarmActions:
+        - !Ref Warning
+      OKActions:
+        - !Ref Warning
+      EvaluationPeriods: 1
+      Threshold: 90
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Statistic: Average
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Period: 900
+
+
+  MemoryCriticalAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn: AppGroup
+    DeletionPolicy: Retain
+    Properties:
+      AlarmDescription: !Sub '${Environment} - High Memory Usage 95%'
+      AlarmActions:
+        - !Ref Error
+      OKActions:
+        - !Ref Error
+      EvaluationPeriods: 2
+      Threshold: 95
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      MetricName: mem_used_percent
+      Namespace: CWAgent
+      Period: 900
+      Statistic: Average
+
+  
+  MemoryWarningAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn: AppGroup
+    DeletionPolicy: Retain
+    Properties:
+      AlarmDescription: !Sub '${Environment} - High Memory Usage 90%'
+      AlarmActions:
+        - !Ref Warning
+      OKActions:
+        - !Ref Warning
+      EvaluationPeriods: 1
+      Threshold: 90
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      MetricName: mem_used_percent
+      Namespace: CWAgent
+      Period: 900
+      Statistic: Average
+
+  
+  InstanceStatusCriticalAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn: AppGroup
+    DeletionPolicy: Retain
+    Properties:
+      AlarmDescription: !Sub '${Environment} - Instance Status Check Failed - please investigate. Troubleshooting: https://goo.gl/Ea27Gd'
+      AlarmActions:
+        - !Ref Error
+      OKActions:
+        - !Ref Error
+      EvaluationPeriods: 3
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      MetricName: StatusCheckFailed_System
+      Namespace: AWS/EC2
+      Period: 60
+      Statistic: Minimum
+
+
+  DiskUsageWarningAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn: AppGroup
+    DeletionPolicy: Retain
+    Properties:
+      AlarmDescription: !Sub '${Environment} - Over 90% of ${Volume} volume space is in use'
+      AlarmActions:
+        - !Ref Warning
+      OKActions:
+        - !Ref Warning
+      MetricName: disk_used_percent
+      Namespace: CWAgent
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 90
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+      - Name: device
+        Value: !Ref Volume
+      - Name: path
+        Value: !Ref Path
+      - Name: fstype
+        Value: !Ref FS
+
+
+  DiskUsageCriticalAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn: AppGroup
+    DeletionPolicy: Retain
+    Properties:
+      AlarmDescription: !Sub '${Environment} - Over 95% of ${Volume} volume space is in use'
+      AlarmActions:
+        - !Ref Error
+      OKActions:
+        - !Ref Error
+      MetricName: disk_used_percent
+      Namespace: CWAgent
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: '95'
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+      - Name: device
+        Value: !Ref Volume
+      - Name: path
+        Value: !Ref Path
+      - Name: fstype
+        Value: !Ref FS
+
+
+
+
+# ------------- Outputs ----------- #
+Outputs:
+  BastionHost1PublicIp:
+    Description: 'Bastion Public IP'
+    Value: !Sub 'http://${BastionHost1.PublicIp}'
+    Export:
+      Name: BastionHost1PublicIp
+
+  BastionHost2PublicIp:
+    Description: 'Bastion Public IP'
+    Value: !Sub 'http://${BastionHost2.PublicIp}'
+    Export:
+      Name: BastionHost2PublicIp

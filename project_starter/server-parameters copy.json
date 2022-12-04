@@ -1,0 +1,42 @@
+[
+  {
+    "ParameterKey": "Environment",
+    "ParameterValue": "EhbraheemStack"
+  },
+  {
+    "ParameterKey": "AdminIP",
+    "ParameterValue": "0.0.0.0/0"
+  },
+  {
+    "ParameterKey": "AdminEmail",
+    "ParameterValue": "ehbraheem@gmail.com"
+  },
+  {
+    "ParameterKey": "AdminPhone",
+    "ParameterValue": "+2347066300068"
+  },
+  {
+    "ParameterKey": "BucketName",
+    "ParameterValue": "bolatan-static-site"
+  },
+  {
+    "ParameterKey": "BucketRegion",
+    "ParameterValue": "us-west-2"
+  },
+  {
+    "ParameterKey": "SiteArchive",
+    "ParameterValue": "site.tar.gz"
+  },
+  {
+    "ParameterKey": "KeyPairName",
+    "ParameterValue": "bolatan"
+  },
+  {
+    "ParameterKey": "ImageAMI",
+    "ParameterValue": "ami-0530ca8899fac469f"
+  },
+  {
+    "ParameterKey": "InstanceType",
+    "ParameterValue": "t2.micro"
+  }
+]
