@@ -4,12 +4,12 @@ Parameters:
         Description: An environment name that will be prefixed to resource names
         Type: String
 
-    VpcCIDR:
+    VpcCIDR:        #CIDR = Classless Inter-Domain Routing
         Description: Please enter the IP range (CIDR notation) for this VPC
         Type: String
         Default: 10.0.0.0/16
 
-    PublicSubnet1CIDR:
+    PublicSubnet1CIDR:     
         Description: Please enter the IP range (CIDR notation) for the public subnet in the first Availability Zone
         Type: String
         Default: 10.0.0.0/24
@@ -30,10 +30,10 @@ Parameters:
         Default: 10.0.3.0/24
 
 Resources:
-    VPC:
-        Type: AWS::EC2::VPC
+    VPC:                                 #VPC = Virtual Private Cloud
+        Type: AWS::EC2::VPC      
         Properties:
-            CidrBlock: !Ref VpcCIDR
+            CidrBlock: !Ref VpcCIDR      #CIDR = Classless Inter-Domain Routing
             EnableDnsHostnames: true
             Tags:
                 - Key: Name
@@ -56,7 +56,7 @@ Resources:
         Type: AWS::EC2::Subnet
         Properties:
             VpcId: !Ref VPC
-            AvailabilityZone: !Select [ 0, !GetAZs '' ]
+            AvailabilityZone: !Select [ 0, !GetAZs '' ]   #GetAZs = Get Availability Zones
             CidrBlock: !Ref PublicSubnet1CIDR
             MapPublicIpOnLaunch: true
             Tags: 
@@ -95,3 +95,27 @@ Resources:
             Tags: 
                 - Key: Name 
                   Value: !Sub ${EnvironmentName} Private Subnet (AZ2)
+
+    NatGateway1EIP:     #Elastic IP address for the NAT gateway in the first Availability Zone
+        Type: AWS::EC2::EIP
+        DependsOn: InternetGatewayAttachment
+        Properties: 
+            Domain: vpc
+
+    NatGateway2EIP:    #Elastic IP address for the NAT gateway in the second Availability Zone
+        Type: AWS::EC2::EIP
+        DependsOn: InternetGatewayAttachment      
+        Properties:
+            Domain: vpc
+
+    NatGateway1:       #NAT gateway in the first Availability Zone
+        Type: AWS::EC2::NatGateway
+        Properties: 
+            AllocationId: !GetAtt NatGateway1EIP.AllocationId     #GetAtt = Get Attribute
+            SubnetId: !Ref PublicSubnet1
+
+    NatGateway2:       #NAT gateway in the second Availability Zone
+        Type: AWS::EC2::NatGateway
+        Properties:
+            AllocationId: !GetAtt NatGateway2EIP.AllocationId
+            SubnetId: !Ref PublicSubnet2
