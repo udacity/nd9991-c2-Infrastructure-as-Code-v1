@@ -9,6 +9,26 @@ Parameters:
         Type: String
         Default: 10.0.0.0/16
 
+    PublicSubnet1CIDR:
+        Description: Please enter the IP range (CIDR notation) for the public subnet in the first Availability Zone
+        Type: String
+        Default: 10.0.0.0/24
+
+    PublicSubnet2CIDR:
+        Description: Please enter the IP range (CIDR notation) for the public subnet in the second Availability Zone
+        Type: String
+        Default: 10.0.1.0/24
+
+    PrivateSubnet1CIDR:
+        Description: Please enter the IP range (CIDR notation) for the private subnet in the first Availability Zone
+        Type: String
+        Default: 10.0.2.0/24
+
+    PrivateSubnet2CIDR:
+        Description: Please enter the IP range (CIDR notation) for the private subnet in the second Availability Zone
+        Type: String
+        Default: 10.0.3.0/24
+
 Resources:
     VPC:
         Type: AWS::EC2::VPC
@@ -48,8 +68,8 @@ Resources:
         Properties:
             VpcId: !Ref VPC
             AvailabilityZone: !Select [ 1, !GetAZs '' ]
-            CidrBlock: !Ref PublicSubnet2CIDR
-            MapPublicIpOnLaunch: true
+            CidrBlock: !Ref PublicSubnet2CIDR    
+            MapPublicIpOnLaunch: true     #Automatically assign a public IP address to instances launched into this subnet
             Tags: 
                 - Key: Name 
                   Value: !Sub ${EnvironmentName} Public Subnet (AZ2)
@@ -60,7 +80,7 @@ Resources:
             VpcId: !Ref VPC
             AvailabilityZone: !Select [ 0, !GetAZs '' ]
             CidrBlock: !Ref PrivateSubnet1CIDR
-            MapPublicIpOnLaunch: false
+            MapPublicIpOnLaunch: false    #Do not automatically assign a public IP address to instances launched into this subnet
             Tags: 
                 - Key: Name 
                   Value: !Sub ${EnvironmentName} Private Subnet (AZ1)
